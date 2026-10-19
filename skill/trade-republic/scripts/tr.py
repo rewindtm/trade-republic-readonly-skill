@@ -1,15 +1,15 @@
-"""Client Trade Republic in sola lettura, solo libreria standard di Python.
+"""Read-only Trade Republic client, Python standard library only.
 
-Parla direttamente con api.traderepublic.com (REST per il login, WebSocket per i
-dati), senza browser, server locali o dipendenze esterne.
+Talks directly to api.traderepublic.com (REST for login, WebSocket for data),
+with no browser, local server or external dependencies.
 
-Non contiene NESSUNA operazione che modifica il conto: niente ordini, piani di
-accumulo, allarmi o watchlist. Le sottoscrizioni ammesse sono elencate in
-READ_ONLY_TYPES e qualsiasi altra viene rifiutata prima di aprire la connessione.
+It contains NO operation that changes the account: no orders, savings plans,
+price alarms or watchlist edits. Allowed subscriptions are listed in
+READ_ONLY_TYPES; anything else is rejected before a connection is opened.
 
-Uso:
-    python tr.py login            # interattivo: telefono, PIN, conferma nell'app
-    python tr.py <comando> [...]  # vedi: python tr.py help
+Usage:
+    python tr.py login              # interactive: phone, PIN, confirm in the app
+    python tr.py <command> [...]    # see: python tr.py help
     python tr.py logout
 """
 
@@ -38,8 +38,8 @@ STATE_DIR = Path(os.getenv("TR_STATE_DIR") or Path.home() / ".trade-republic")
 COOKIE_FILE = STATE_DIR / "session.cookies"
 LOCALE = os.getenv("TR_LOCALE", "it")
 
-# Valori che il frontend web invia. Trade Republic può iniziare a rifiutare quelli
-# vecchi: in quel caso si aggiornano da variabile d'ambiente senza toccare il codice.
+# Values the web frontend sends. Trade Republic may start rejecting stale ones:
+# they can then be updated via environment variables without touching the code.
 APP_VERSION = os.getenv("TR_APP_VERSION", "2.2631.13")
 PLATFORM = os.getenv("TR_PLATFORM", "web-pro")
 USER_AGENT = os.getenv(
@@ -144,7 +144,7 @@ class Rest:
         except urllib.error.HTTPError as e:
             status, raw = e.code, e.read()
             if status == 405 and "awselb" in (e.headers.get("server") or "").lower():
-                raise TRError("Richiesta bloccata dal firewall AWS di Trade Republic (WAF).") from None
+                raise TRError("Request blocked by Trade Republic's AWS firewall (WAF).") from None
         try:
             payload = json.loads(raw) if raw else None
         except ValueError:
@@ -156,10 +156,10 @@ class Rest:
 
     def refresh(self) -> None:
         if not COOKIE_FILE.exists():
-            raise TRError("Nessuna sessione: esegui prima `python tr.py login`.")
+            raise TRError("No session: run `python tr.py login` first.")
         status, _ = self.request("GET", "/api/v1/auth/web/session")
         if status >= 400:
-            raise TRError(f"Sessione scaduta o non valida (HTTP {status}): ripeti `python tr.py login`.")
+            raise TRError(f"Session expired or invalid (HTTP {status}): run `python tr.py login` again.")
         _save_cookies(self.jar)
 
 
@@ -172,57 +172,57 @@ def _login_error(payload: object, status: int) -> str:
 
 def login() -> None:
     if not sys.stdin.isatty():
-        raise TRError("Il login va fatto dall'utente in un terminale interattivo.")
-    phone = input("Numero di telefono (formato +39...): ").strip()
-    pin = getpass.getpass("PIN Trade Republic (non viene mostrato né salvato): ").strip()
+        raise TRError("Login must be done by the user in an interactive terminal.")
+    phone = input("Phone number (international format, e.g. +49...): ").strip()
+    pin = getpass.getpass("Trade Republic PIN (hidden, never stored): ").strip()
 
     rest = Rest()
     rest.jar.clear()
     status, payload = rest.request("POST", "/api/v2/auth/web/login", {"phoneNumber": phone, "pin": pin}, login=True)
     pin = ""
     if status >= 400 or not isinstance(payload, dict) or "processId" not in payload:
-        raise TRError(f"Login rifiutato: {_login_error(payload, status)}")
+        raise TRError(f"Login rejected: {_login_error(payload, status)}")
     process_id = payload["processId"]
     deadline = time.time() + int(payload.get("countdownInSeconds") or 120)
     process_path = f"/api/v2/auth/web/login/processes/{process_id}"
 
     status, process = rest.request("GET", process_path, login=True)
     if status < 400 and isinstance(process, dict) and process.get("requiredAction") == "AUTHENTICATOR_VERIFICATION":
-        code = input("Codice dell'app di autenticazione: ").strip()
+        code = input("Authenticator app code: ").strip()
         status, payload = rest.request("POST", f"{process_path}/authenticator-verification", {"code": code}, login=True)
         if status >= 400:
-            raise TRError(f"Codice rifiutato: {_login_error(payload, status)}")
+            raise TRError(f"Code rejected: {_login_error(payload, status)}")
 
-    print("Conferma l'accesso nell'app Trade Republic sul telefono...")
+    print("Confirm the login in the Trade Republic app on your phone...")
     while True:
         status, process = rest.request("GET", process_path, login=True)
         if status >= 400 or not isinstance(process, dict):
-            raise TRError(f"Login interrotto: {_login_error(process, status)}")
+            raise TRError(f"Login aborted: {_login_error(process, status)}")
         state = process.get("status")
         if state in ("CONFIRMED", "COMPLETED"):
             break
         if state != "PENDING":
-            raise TRError(f"Stato di login inatteso: {state}")
+            raise TRError(f"Unexpected login state: {state}")
         if time.time() > deadline:
-            raise TRError("Tempo scaduto: l'accesso non è stato confermato nell'app.")
+            raise TRError("Timed out: the login was not confirmed in the app.")
         time.sleep(2)
 
     _save_cookies(rest.jar)
     rest.refresh()
-    print(f"Accesso riuscito. Sessione salvata in {COOKIE_FILE}")
+    print(f"Login successful. Session saved to {COOKIE_FILE}")
 
 
 def logout() -> None:
     if COOKIE_FILE.exists():
         COOKIE_FILE.unlink()
-    print("Sessione locale eliminata.")
+    print("Local session deleted.")
 
 
 # ---------------------------------------------------------------------- WebSocket
 
 
 class WebSocket:
-    """Client WebSocket minimale (RFC 6455) solo per api.traderepublic.com."""
+    """Minimal WebSocket client (RFC 6455), only for api.traderepublic.com."""
 
     def __init__(self, cookie: str) -> None:
         raw = socket.create_connection((HOST, 443), timeout=30)
@@ -244,23 +244,23 @@ class WebSocket:
         while b"\r\n\r\n" not in response:
             chunk = self.sock.recv(4096)
             if not chunk:
-                raise TRError("Connessione WebSocket chiusa durante l'handshake.")
+                raise TRError("WebSocket connection closed during the handshake.")
             response += chunk
         head, self.buffer = response.split(b"\r\n\r\n", 1)
         status_line = head.split(b"\r\n", 1)[0].decode(errors="replace")
         if " 101 " not in status_line + " ":
-            raise TRError(f"Handshake WebSocket rifiutato: {status_line}")
+            raise TRError(f"WebSocket handshake rejected: {status_line}")
         expected = base64.b64encode(
             hashlib.sha1((key + "258EAFA5-E914-47DA-95CA-C5AB0DC85B11").encode()).digest()
         ).decode()
         if expected.encode() not in head:
-            raise TRError("Handshake WebSocket non valido.")
+            raise TRError("Invalid WebSocket handshake.")
 
     def _read(self, n: int) -> bytes:
         while len(self.buffer) < n:
             chunk = self.sock.recv(65536)
             if not chunk:
-                raise TRError("Connessione WebSocket chiusa dal server.")
+                raise TRError("WebSocket connection closed by the server.")
             self.buffer += chunk
         data, self.buffer = self.buffer[:n], self.buffer[n:]
         return data
@@ -301,7 +301,7 @@ class WebSocket:
             if opcode == 0xA:
                 continue
             if opcode == 0x8:
-                raise TRError("Connessione WebSocket chiusa dal server.")
+                raise TRError("WebSocket connection closed by the server.")
             message += payload
             if fin:
                 return message.decode("utf-8")
@@ -330,12 +330,12 @@ class Client:
         self.ws.send(f"connect 31 {json.dumps(hello)}")
         reply = self.ws.recv()
         if reply != "connected":
-            raise TRError(f"Connessione rifiutata: {reply[:200]}")
+            raise TRError(f"Connection rejected: {reply[:200]}")
         self.next_id = 1
 
     def get(self, payload: dict, timeout: float = 15.0) -> object:
         if payload.get("type") not in READ_ONLY_TYPES:
-            raise TRError(f"Sottoscrizione non consentita: {payload.get('type')}")
+            raise TRError(f"Subscription not allowed: {payload.get('type')}")
         sub_id = str(self.next_id)
         self.next_id += 1
         self.ws.send(f"sub {sub_id} {json.dumps(payload)}")
@@ -348,12 +348,12 @@ class Client:
                     continue
                 code, _, body = rest.partition(" ")
                 if code in ("A", "D"):
-                    # Alla prima risposta il server manda sempre lo stato completo (A).
+                    # The first reply always carries the full state (A).
                     return json.loads(body) if body else {}
                 if code == "E":
-                    raise TRError(f"Errore da Trade Republic per {payload['type']}: {body[:300]}")
+                    raise TRError(f"Trade Republic error for {payload['type']}: {body[:300]}")
         except socket.timeout:
-            raise TRError(f"Nessuna risposta per {payload['type']} entro {timeout:.0f}s.") from None
+            raise TRError(f"No reply for {payload['type']} within {timeout:.0f}s.") from None
         finally:
             self.ws.sock.settimeout(30)
             self.ws.send(f"unsub {sub_id}")
@@ -371,7 +371,7 @@ class Client:
         accounts = [a for a in self.accounts() if a.get("securitiesAccountNumber")]
         accounts.sort(key=lambda a: a.get("productType") != "DEFAULT")
         if not accounts:
-            raise TRError("Nessun conto titoli trovato.")
+            raise TRError("No securities account found.")
         return accounts[0]["securitiesAccountNumber"]
 
     def positions(self) -> list[dict]:
@@ -396,11 +396,11 @@ class Client:
             path = f"/api-gateway/portfolio-chart/v2/chart?{query}"
             status, data = self.rest.request("GET", path, login=True)
             if status >= 400:
-                # Il servizio dei grafici a volte risponde con un errore transitorio.
+                # The chart service sometimes answers with a transient error.
                 time.sleep(1.5)
                 status, data = self.rest.request("GET", path, login=True)
             if status >= 400 or not isinstance(data, dict):
-                raise TRError(f"Storico non disponibile (HTTP {status}).")
+                raise TRError(f"History unavailable (HTTP {status}).")
             for point in data.get("points", []):
                 cash, net = _dec(point.get("cashBalance")), _dec(point.get("netValue"))
                 if cash is not None and net is not None:
@@ -476,7 +476,7 @@ def summary(client: Client) -> dict:
             "cost": str(total_cost),
             "value": str(total_value),
             "pnl": str(total_value - total_cost),
-            "note": "Valori ai prezzi correnti della borsa indicata; posizioni senza prezzo escluse dal valore.",
+            "note": "Values at current prices on the listed exchange; positions without a price are excluded from the value.",
         },
         "cash": cash,
     }
@@ -487,36 +487,36 @@ def summary(client: Client) -> dict:
 
 def _need(args: list[str], names: list[str]) -> list[str]:
     if len(args) < len(names):
-        raise TRError(f"Argomenti mancanti: {' '.join(f'<{n}>' for n in names)}")
+        raise TRError(f"Missing arguments: {' '.join(f'<{n}>' for n in names)}")
     return args
 
 
 def _range(value: str, allowed: tuple[str, ...]) -> str:
     if value not in allowed:
-        raise TRError(f"Intervallo non valido: {value}. Ammessi: {', '.join(allowed)}")
+        raise TRError(f"Invalid range: {value}. Allowed: {', '.join(allowed)}")
     return value
 
 
 COMMANDS = {
-    "summary": ("", "posizioni con nome, prezzo attuale, valore e P/L + liquidità"),
-    "accounts": ("", "conti (contiene securitiesAccountNumber)"),
-    "portfolio": ("", "posizioni grezze (quantità, prezzo medio di carico)"),
-    "cash": ("", "liquidità"),
-    "payout-cash": ("", "liquidità prelevabile"),
-    "history": ("<range>", f"valore storico del portafoglio ({'/'.join(HISTORY_RANGES)})"),
-    "transactions": ("[max=50]", "movimenti (depositi, prelievi, trade, dividendi, carta)"),
-    "transaction": ("<id>", "dettaglio di un movimento"),
-    "activity": ("[max=50]", "log attività del conto"),
-    "orders": ("", "ordini aperti"),
-    "savings-plans": ("", "piani di accumulo"),
-    "price-alarms": ("", "allarmi di prezzo"),
+    "summary": ("", "positions with name, current price, value and P/L, plus cash"),
+    "accounts": ("", "accounts (includes securitiesAccountNumber)"),
+    "portfolio": ("", "raw positions (quantity, average buy-in)"),
+    "cash": ("", "cash balance"),
+    "payout-cash": ("", "cash available for withdrawal"),
+    "history": ("<range>", f"portfolio value over time ({'/'.join(HISTORY_RANGES)})"),
+    "transactions": ("[max=50]", "transactions (deposits, withdrawals, trades, dividends, card)"),
+    "transaction": ("<id>", "details of one transaction"),
+    "activity": ("[max=50]", "account activity log"),
+    "orders": ("", "open orders"),
+    "savings-plans": ("", "savings plans"),
+    "price-alarms": ("", "price alarms"),
     "watchlist": ("", "watchlist"),
-    "search": ("<testo> [tipo=stock]", f"ricerca strumenti ({'/'.join(ASSET_TYPES)})"),
-    "instrument": ("<ISIN>", "dettagli strumento"),
-    "stock-details": ("<ISIN>", "dati societari/fondamentali"),
-    "price": ("<ISIN> [borsa=LSX]", "quotazione live bid/ask/last"),
-    "price-history": ("<ISIN> <range> [borsa=LSX]", f"storico prezzi ({'/'.join(PRICE_RANGES)})"),
-    "news": ("<ISIN>", "notizie sullo strumento"),
+    "search": ("<text> [type=stock]", f"search instruments ({'/'.join(ASSET_TYPES)})"),
+    "instrument": ("<ISIN>", "instrument details"),
+    "stock-details": ("<ISIN>", "company info / fundamentals"),
+    "price": ("<ISIN> [exchange=LSX]", "live quote bid/ask/last"),
+    "price-history": ("<ISIN> <range> [exchange=LSX]", f"price history ({'/'.join(PRICE_RANGES)})"),
+    "news": ("<ISIN>", "news about the instrument"),
 }
 
 
@@ -531,9 +531,9 @@ def run(command: str, args: list[str]) -> object:
         logout()
         return None
     if command not in COMMANDS:
-        raise TRError(f"Comando sconosciuto o non consentito: {command}")
+        raise TRError(f"Unknown or not allowed command: {command}")
 
-    # I dati di mercato sono pubblici: funzionano anche senza login.
+    # Market data is public: it works without logging in.
     client = Client(authenticated=command not in PUBLIC_COMMANDS)
     try:
         if command == "summary":
@@ -565,10 +565,10 @@ def run(command: str, args: list[str]) -> object:
         if command == "watchlist":
             return client.get({"type": "watchlist"})
         if command == "search":
-            _need(args, ["testo"])
+            _need(args, ["text"])
             kind = args[1] if len(args) > 1 else "stock"
             if kind not in ASSET_TYPES:
-                raise TRError(f"Tipo non valido: {kind}. Ammessi: {', '.join(ASSET_TYPES)}")
+                raise TRError(f"Invalid type: {kind}. Allowed: {', '.join(ASSET_TYPES)}")
             data = {"q": args[0], "filter": [{"key": "type", "value": kind}], "page": 1, "pageSize": 20}
             return client.get({"type": "neonSearch", "data": data})
         if command == "instrument":
@@ -593,18 +593,18 @@ def main() -> None:
     sys.stdout.reconfigure(encoding="utf-8")
     sys.stderr.reconfigure(encoding="utf-8")
     if len(sys.argv) < 2 or sys.argv[1] in ("help", "-h", "--help"):
-        print("Comandi (sola lettura):")
-        print(f"  {'login':<42}accesso interattivo (telefono + PIN + conferma in app)")
-        print(f"  {'logout':<42}elimina la sessione locale")
+        print("Commands (read-only):")
+        print(f"  {'login':<46}interactive login (phone + PIN + confirm in the app)")
+        print(f"  {'logout':<46}delete the local session")
         for name, (usage, text) in COMMANDS.items():
-            print(f"  {(name + ' ' + usage).strip():<42}{text}")
+            print(f"  {(name + ' ' + usage).strip():<46}{text}")
         return
     try:
         result = run(sys.argv[1], sys.argv[2:])
     except TRError as e:
-        sys.exit(f"Errore: {e}")
+        sys.exit(f"Error: {e}")
     except (OSError, ValueError) as e:
-        sys.exit(f"Errore: {e}")
+        sys.exit(f"Error: {e}")
     if result is not None:
         print(json.dumps(result, indent=2, ensure_ascii=False, default=str))
 

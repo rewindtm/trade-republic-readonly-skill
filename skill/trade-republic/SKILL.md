@@ -1,68 +1,71 @@
 ---
 name: trade-republic
-description: Consulta in sola lettura il conto Trade Republic dell'utente (portafoglio con valore e P/L, liquidità, movimenti, dividendi, ordini aperti, piani di accumulo, storico valore) e i dati di mercato (ricerca titoli/ETF/crypto, quotazioni, storico prezzi, fondamentali, notizie). Usa quando l'utente chiede del suo portafoglio o conto Trade Republic o del prezzo/andamento di uno strumento. Non piazza né cancella ordini.
+description: Read-only access to the user's Trade Republic account (portfolio with value and P/L, cash, transactions, dividends, open orders, savings plans, value history) and to market data (stock/ETF/crypto search, live quotes, price history, fundamentals, news). Use when the user asks about their Trade Republic portfolio or account, or about the price or performance of an instrument. Never places or cancels orders.
 ---
 
-# Trade Republic (sola lettura)
+# Trade Republic (read-only)
 
-`scripts/tr.py` è un client nostro, solo libreria standard di Python, che parla direttamente
-con `api.traderepublic.com` (REST per la sessione, WebSocket per i dati). Nessun browser,
-server o dipendenza esterna.
+`scripts/tr.py` is our own client, Python standard library only, talking directly to
+`api.traderepublic.com` (REST for the session, WebSocket for data). No browser, server or
+external dependency.
 
-## Regole
+## Rules
 
-- **Sola lettura.** Mai piazzare, modificare o cancellare ordini, piani di accumulo, allarmi
-  o watchlist, nemmeno se l'utente lo chiede: `tr.py` non lo permette e non va aggirato
-  (niente richieste scritte a mano verso l'API). Per operare l'utente usa l'app.
-- **Login solo dall'utente.** `tr.py login` chiede telefono e PIN: non eseguirlo tu, non
-  chiedere il PIN in chat. Se la sessione manca o è scaduta, di' all'utente di lanciare in
-  un suo terminale: `python ~/.claude/skills/trade-republic/scripts/tr.py login`
-- Non leggere né stampare `~/.trade-republic/session.cookies`.
-- Niente consigli di investimento personalizzati: riporta dati e calcoli, non indicazioni
-  su cosa comprare o vendere.
-- Non riversare in chat IBAN, numeri di conto o dati personali se non servono: riassumi.
+- **Read-only.** Never place, change or cancel orders, savings plans, price alarms or
+  watchlist entries, even if the user asks: `tr.py` cannot do it and must not be bypassed
+  (no hand-written requests to the API). The user trades in the official app.
+- **Login is the user's job.** `tr.py login` asks for phone number and PIN: never run it
+  yourself and never ask for the PIN in chat. If the session is missing or expired, tell
+  the user to run in their own terminal:
+  `python ~/.claude/skills/trade-republic/scripts/tr.py login`
+- Never read or print `~/.trade-republic/session.cookies`.
+- No personalised investment advice: report data and calculations, not recommendations
+  on what to buy or sell.
+- Don't echo IBANs, account numbers or personal data unless needed: summarise.
+- Answer in the user's language.
 
-## Uso
+## Usage
 
 ```bash
-python ~/.claude/skills/trade-republic/scripts/tr.py <comando> [argomenti]
+python ~/.claude/skills/trade-republic/scripts/tr.py <command> [arguments]
 ```
 
-Output JSON su stdout. Gli errori iniziano con `Errore:` (codice di uscita 1).
+JSON output on stdout. Errors start with `Error:` (exit code 1).
 
-**Conto (serve login)**
+**Account (login required)**
 
-| Comando | Restituisce |
+| Command | Returns |
 |---|---|
-| `summary` | **parti da qui**: posizioni con nome, quantità, prezzo medio, prezzo attuale, valore, P/L e totali, più liquidità |
-| `portfolio` | posizioni grezze (`netSize`, `averageBuyIn`) |
-| `accounts` | conti (contiene `securitiesAccountNumber`) |
-| `cash` / `payout-cash` | liquidità / liquidità prelevabile |
-| `history <range>` | valore storico del portafoglio |
-| `transactions [max=50]` | movimenti: depositi, prelievi, trade, dividendi, carta (più recenti prima) |
-| `transaction <id>` | dettaglio di un movimento (id preso da `transactions`) |
-| `activity [max=50]` | log attività |
-| `orders`, `savings-plans`, `price-alarms`, `watchlist` | liste corrispondenti |
+| `summary` | **start here**: positions with name, quantity, average buy-in, current price, value, P/L and totals, plus cash |
+| `portfolio` | raw positions (`netSize`, `averageBuyIn`) |
+| `accounts` | accounts (includes `securitiesAccountNumber`) |
+| `cash` / `payout-cash` | cash / cash available for withdrawal |
+| `history <range>` | portfolio value over time |
+| `transactions [max=50]` | transactions: deposits, withdrawals, trades, dividends, card (newest first) |
+| `transaction <id>` | details of one transaction (id from `transactions`) |
+| `activity [max=50]` | activity log |
+| `orders`, `savings-plans`, `price-alarms`, `watchlist` | the corresponding lists |
 
-**Mercato (pubblico, funziona anche senza login)**
+**Market (public, works without login)**
 
-| Comando | Restituisce |
+| Command | Returns |
 |---|---|
-| `search <testo> [tipo]` | ricerca; tipo: stock (default), fund, derivative, bond, crypto, privateFund, mutualFund |
-| `instrument <ISIN>` | dettagli e borse disponibili (`exchangeIds`) |
-| `stock-details <ISIN>` | società e fondamentali |
-| `price <ISIN> [borsa=LSX]` | bid/ask/last live |
-| `price-history <ISIN> <range> [borsa=LSX]` | candele storiche |
-| `news <ISIN>` | notizie |
+| `search <text> [type]` | search; type: stock (default), fund, derivative, bond, crypto, privateFund, mutualFund |
+| `instrument <ISIN>` | details and available exchanges (`exchangeIds`) |
+| `stock-details <ISIN>` | company info and fundamentals |
+| `price <ISIN> [exchange=LSX]` | live bid/ask/last |
+| `price-history <ISIN> <range> [exchange=LSX]` | historical candles |
+| `news <ISIN>` | news |
 
-`range` per `history`: 1d, 5d, 1m, 6m, ytd, 1y, 5y, max.
-`range` per `price-history`: 1d, 5d, 1m, 3m, 6m, 1y, 5y, max. Se uno strumento non è su LSX usa una borsa
-presa da `instrument` (es. TIB, XETR). Gli orari sono timestamp Unix in millisecondi.
+`range` for `history`: 1d, 5d, 1m, 6m, ytd, 1y, 5y, max.
+`range` for `price-history`: 1d, 5d, 1m, 3m, 6m, 1y, 5y, max. If an instrument isn't on
+LSX, use an exchange from `instrument` (e.g. TIB, XETR). Times are Unix timestamps in
+milliseconds.
 
-## Errori comuni
+## Common errors
 
-- `Nessuna sessione` / `Sessione scaduta`: l'utente deve rifare `tr.py login`.
-- `BAD_SUBSCRIPTION_TYPE` o rifiuti di versione: Trade Republic ha cambiato il protocollo.
-  Si può provare ad aggiornare `TR_APP_VERSION` / `TR_USER_AGENT` da variabile d'ambiente.
-- `Nessuna risposta ... entro`: ritenta una volta; se persiste, la borsa scelta non quota
-  lo strumento.
+- `No session` / `Session expired`: the user must run `tr.py login` again.
+- `BAD_SUBSCRIPTION_TYPE` or version rejections: Trade Republic changed the protocol.
+  Updating `TR_APP_VERSION` / `TR_USER_AGENT` via environment variables may help.
+- `No reply for ... within`: retry once; if it persists, the chosen exchange doesn't list
+  the instrument.

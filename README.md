@@ -129,12 +129,12 @@ python ~/.claude/skills/trade-republic/scripts/tr.py login
 2. Enter your Trade Republic PIN (it is not shown while typing).
 3. If you use an authenticator app, enter the code.
 4. Confirm the login in the Trade Republic app on your phone.
-5. You will see `Accesso riuscito` ("login successful").
+5. You will see `Login successful`.
 
-When the session expires, commands reply `Sessione scaduta` ("session expired"): log in again.
+When the session expires, commands reply `Session expired`: log in again.
 To log out: `tr.py logout`.
 
-> The CLI messages are in Italian; the JSON output is in the language set by `TR_LOCALE`.
+> The JSON content (instrument names, descriptions, news) is in the language set by `TR_LOCALE`.
 
 ## Command reference
 
@@ -143,7 +143,7 @@ python tr.py help
 python tr.py <command> [arguments]
 ```
 
-Output is JSON on stdout. Errors start with `Errore:` and exit with code 1.
+Output is JSON on stdout. Errors start with `Error:` and exit with code 1.
 
 ### Account (login required)
 
@@ -207,13 +207,13 @@ working, updating one value often fixes it without touching the code.
 
 | Message | Cause and fix |
 |---|---|
-| `Nessuna sessione` (no session) | You haven't run `tr.py login` yet. |
-| `Sessione scaduta o non valida` (session expired) | Trade Republic closed the session (timeout, another web login): log in again. |
-| `Login rifiutato: ...` (login rejected) | Wrong number or PIN, too many attempts, or rejected version (see `TR_APP_VERSION`). |
-| `Richiesta bloccata dal firewall AWS` (blocked by AWS WAF) | Trade Republic extended its anti-bot check to the v2 login: the client needs an update. |
+| `No session` | You haven't run `tr.py login` yet. |
+| `Session expired or invalid` | Trade Republic closed the session (timeout, another web login): log in again. |
+| `Login rejected: ...` | Wrong number or PIN, too many attempts, or rejected version (see `TR_APP_VERSION`). |
+| `Request blocked by Trade Republic's AWS firewall` | Trade Republic extended its anti-bot check to the v2 login: the client needs an update. |
 | `BAD_SUBSCRIPTION_TYPE` | Trade Republic renamed a subscription: the client needs an update. |
-| `Nessuna risposta per ticker` (no ticker reply) | The chosen exchange doesn't list the instrument: pick one from `instrument`. |
-| `Intervallo non valido` (invalid range) | That range isn't supported by that command (see tables above). |
+| `No reply for ticker` | The chosen exchange doesn't list the instrument: pick one from `instrument`. |
+| `Invalid range` | That range isn't supported by that command (see tables above). |
 
 ## Known limitations
 
