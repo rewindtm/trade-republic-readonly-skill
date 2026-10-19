@@ -1,106 +1,105 @@
-# Trade Republic — skill in sola lettura per Claude Code
+# Trade Republic — read-only skill for Claude Code
 
-Una [skill](https://docs.claude.com/en/docs/claude-code/skills) per Claude Code che permette
-di chiedere in linguaggio naturale informazioni sul proprio conto **Trade Republic**
-(portafoglio, valore e guadagno/perdita, liquidità, movimenti, dividendi, ordini aperti, piani
-di accumulo, andamento storico) e sui mercati (ricerca titoli/ETF/crypto, quotazioni live,
-storico prezzi, fondamentali, notizie).
+A [skill](https://docs.claude.com/en/docs/claude-code/skills) for Claude Code that lets you ask,
+in plain language, about your **Trade Republic** account (portfolio, value and profit/loss,
+cash, transactions, dividends, open orders, savings plans, historical performance) and about
+the markets (stock/ETF/crypto search, live quotes, price history, fundamentals, news).
 
-- **Sola lettura per costruzione**: non può comprare, vendere, cancellare ordini, toccare
-  piani di accumulo, allarmi o watchlist.
-- **Zero dipendenze**: un unico file Python che usa solo la libreria standard. Niente `pip install`,
-  niente browser automatizzati, niente server locali, niente eseguibili.
-- **Le credenziali restano tue**: il login lo fai tu nel terminale, il PIN non viene salvato
-  e la conferma avviene nell'app sul telefono.
+- **Read-only by design**: it cannot buy, sell, cancel orders, or touch savings plans, price
+  alarms or the watchlist.
+- **Zero dependencies**: a single Python file using only the standard library. No `pip install`,
+  no automated browsers, no local servers, no executables.
+- **Your credentials stay yours**: you log in yourself in the terminal, the PIN is never stored,
+  and the login is confirmed in the app on your phone.
 
-> Progetto non ufficiale, non affiliato a Trade Republic Bank GmbH. Usa un'API privata e non
-> documentata che Trade Republic può cambiare in qualsiasi momento. Usalo a tuo rischio.
+> Unofficial project, not affiliated with Trade Republic Bank GmbH. It relies on a private,
+> undocumented API that Trade Republic can change at any time. Use at your own risk.
 
 ---
 
-## Indice
+## Contents
 
-1. [Esempi](#esempi)
-2. [Come funziona](#come-funziona)
-3. [Sicurezza e privacy](#sicurezza-e-privacy)
-4. [Installazione](#installazione)
+1. [Examples](#examples)
+2. [How it works](#how-it-works)
+3. [Security and privacy](#security-and-privacy)
+4. [Installation](#installation)
 5. [Login](#login)
-6. [Riferimento comandi](#riferimento-comandi)
-7. [Configurazione](#configurazione)
-8. [Risoluzione problemi](#risoluzione-problemi)
-9. [Limiti noti](#limiti-noti)
-10. [Struttura della repo](#struttura-della-repo)
+6. [Command reference](#command-reference)
+7. [Configuration](#configuration)
+8. [Troubleshooting](#troubleshooting)
+9. [Known limitations](#known-limitations)
+10. [Repository layout](#repository-layout)
 
 ---
 
-## Esempi
+## Examples
 
-Domande che puoi fare a Claude Code una volta installata la skill:
+Questions you can ask Claude Code once the skill is installed:
 
-- «Quanto vale il mio portafoglio Trade Republic e quanto sto guadagnando o perdendo?»
-- «Quanta liquidità ho disponibile e quanta posso prelevare?»
-- «Elencami i dividendi e gli interessi ricevuti quest'anno.»
-- «Com'è andato il portafoglio negli ultimi 6 mesi?»
-- «Ho ordini aperti o piani di accumulo attivi?»
-- «Cerca l'ETF Vanguard FTSE All-World e mostrami l'andamento a 1 anno.»
-- «Quanto quota adesso Apple e cosa fa l'azienda?»
+- "What is my Trade Republic portfolio worth and how much am I up or down?"
+- "How much cash do I have, and how much can I withdraw?"
+- "List the dividends and interest I received this year."
+- "How has my portfolio performed over the last 6 months?"
+- "Do I have any open orders or active savings plans?"
+- "Find the Vanguard FTSE All-World ETF and show me its 1-year chart."
+- "What is Apple trading at right now, and what does the company do?"
 
-## Come funziona
+## How it works
 
 ```
-Claude Code ──► SKILL.md (regole + comandi) ──► scripts/tr.py ──┬─ HTTPS ─► api.traderepublic.com  (login, sessione, storico)
-                                                                └─ WSS ───► api.traderepublic.com  (portafoglio, movimenti, prezzi)
+Claude Code ──► SKILL.md (rules + commands) ──► scripts/tr.py ──┬─ HTTPS ─► api.traderepublic.com  (login, session, history)
+                                                                └─ WSS ───► api.traderepublic.com  (portfolio, transactions, prices)
 ```
 
 ### `SKILL.md`
-Dice a Claude **quando** usare la skill, **quali comandi** esistono e **quali regole** rispettare:
+Tells Claude **when** to use the skill, **which commands** exist and **which rules** to follow:
 
-- mai operare sul conto, né aggirare `tr.py` con richieste scritte a mano;
-- mai eseguire il login al posto tuo o chiederti il PIN in chat;
-- mai leggere il file di sessione;
-- niente consigli di investimento personalizzati, solo dati e calcoli;
-- non riportare IBAN, numeri di conto o dati personali se non servono.
+- never trade or change the account, and never bypass `tr.py` with hand-written requests;
+- never run the login on your behalf or ask for your PIN in chat;
+- never read the session file;
+- no personalised investment advice, only data and calculations;
+- don't echo IBANs, account numbers or personal data unless needed.
 
 ### `scripts/tr.py`
-Client scritto da zero, ~600 righe, solo libreria standard di Python 3.10+:
+A client written from scratch, ~600 lines, Python 3.10+ standard library only:
 
-- **Login** — usa il flusso web "v2" di Trade Republic: numero + PIN, poi conferma nell'app
-  (più l'eventuale codice dell'app di autenticazione). Questo flusso non richiede il token
-  anti-bot AWS WAF, quindi non serve nessun browser.
-- **Sessione** — i cookie di sessione vengono salvati in `~/.trade-republic/session.cookies`
-  e rinnovati automaticamente a ogni comando (`GET /api/v1/auth/web/session`). Quando
-  Trade Republic la invalida, si rifà il login.
-- **WebSocket** — implementazione minimale di RFC 6455 (handshake con verifica di
-  `Sec-WebSocket-Accept`, frame mascherati, messaggi frammentati, ping/pong) usata con il
-  protocollo di Trade Republic: `connect` → `sub <id> {json}` → risposta `A`/`D`/`E` → `unsub`.
-- **Sola lettura** — ogni sottoscrizione passa da un controllo su una lista esplicita di tipi
-  ammessi (`READ_ONLY_TYPES`). Tipi come `simpleCreateOrder`, `cancelOrder`,
-  `createSavingsPlan`, `createPriceAlarm`, `addToWatchlist` non sono in lista e vengono
-  rifiutati prima ancora di contattare il server. Le uniche chiamate REST sono login,
-  rinnovo sessione e grafico storico del portafoglio.
-- **Riepilogo** — `summary` unisce posizioni, nome dello strumento, prezzo attuale, valore,
-  P/L assoluto e percentuale, totali e liquidità in un unico JSON.
+- **Login**: uses Trade Republic's "v2" web login flow (phone number + PIN, then confirmation
+  in the app, plus an authenticator code if you have one enabled). This flow does not require
+  the AWS WAF anti-bot token, so no browser is needed.
+- **Session**: session cookies are saved to `~/.trade-republic/session.cookies` and refreshed
+  automatically on every command (`GET /api/v1/auth/web/session`). When Trade Republic
+  invalidates the session, you simply log in again.
+- **WebSocket**: a minimal RFC 6455 implementation (handshake with `Sec-WebSocket-Accept`
+  check, masked frames, fragmented messages, ping/pong) speaking Trade Republic's protocol:
+  `connect` → `sub <id> {json}` → `A`/`D`/`E` reply → `unsub`.
+- **Read-only**: every subscription is checked against an explicit allow-list
+  (`READ_ONLY_TYPES`). Types such as `simpleCreateOrder`, `cancelOrder`, `createSavingsPlan`,
+  `createPriceAlarm` and `addToWatchlist` are not on the list and are rejected before the server
+  is even contacted. The only REST calls are login, session refresh and the portfolio history
+  chart.
+- **Summary**: `summary` combines positions, instrument name, current price, value, absolute and
+  percentage P/L, totals and cash into a single JSON document.
 
-I comandi di mercato (ricerca, prezzi, storico, fondamentali, notizie) usano dati pubblici
-e funzionano anche **senza login**.
+Market commands (search, quotes, history, fundamentals, news) use public data and work
+**without logging in**.
 
-## Sicurezza e privacy
+## Security and privacy
 
-| Aspetto | Comportamento |
+| Topic | Behaviour |
 |---|---|
-| PIN | Digitato da te con `getpass` (non visibile), inviato solo a `api.traderepublic.com`, mai salvato. |
-| Sessione | Cookie in `~/.trade-republic/session.cookies` (permessi `600` su macOS/Linux). Chi ha questo file può **leggere** il tuo conto finché la sessione è valida: non condividerlo e non sincronizzarlo. `tr.py logout` lo elimina. |
-| Rete | Solo `api.traderepublic.com` su HTTPS/WSS con verifica dei certificati di sistema. Nessuna telemetria, nessun servizio di terze parti. |
-| Operatività | Impossibile da `tr.py`: nessun codice per ordini, piani, allarmi o watchlist. |
-| Porte aperte | Nessuna: non c'è un server locale. |
+| PIN | Typed by you via `getpass` (hidden), sent only to `api.traderepublic.com`, never stored. |
+| Session | Cookies in `~/.trade-republic/session.cookies` (mode `600` on macOS/Linux). Anyone holding this file can **read** your account while the session is valid: don't share or sync it. `tr.py logout` deletes it. |
+| Network | Only `api.traderepublic.com` over HTTPS/WSS with system certificate verification. No telemetry, no third-party services. |
+| Trading | Impossible from `tr.py`: there is no code for orders, savings plans, alarms or the watchlist. |
+| Open ports | None: there is no local server. |
 
-Nota: la sessione web di Trade Republic in sé **permetterebbe** di operare (lo fa il sito web
-ufficiale). Il limite è nel nostro client e nelle regole della skill. Tratta il file di
-sessione come tratteresti un browser con il conto aperto.
+Note: the Trade Republic web session itself **would** allow trading (the official web app does
+it). The restriction lives in this client and in the skill's rules. Treat the session file as
+you would a browser with your account open.
 
-## Installazione
+## Installation
 
-Requisiti: Python ≥ 3.10 e Claude Code.
+Requirements: Python ≥ 3.10 and Claude Code.
 
 ```bash
 git clone https://github.com/rewindtm/trade-republic-readonly-skill.git
@@ -114,7 +113,7 @@ git clone https://github.com/rewindtm/trade-republic-readonly-skill.git
 Copy-Item -Recurse trade-republic-readonly-skill\skill\trade-republic $HOME\.claude\skills\
 ```
 
-Prova senza login (dati pubblici):
+Quick test without logging in (public data):
 
 ```bash
 python ~/.claude/skills/trade-republic/scripts/tr.py price US0378331005
@@ -126,54 +125,56 @@ python ~/.claude/skills/trade-republic/scripts/tr.py price US0378331005
 python ~/.claude/skills/trade-republic/scripts/tr.py login
 ```
 
-1. Inserisci il numero con prefisso internazionale (es. `+39333...`).
-2. Inserisci il PIN di Trade Republic (non viene mostrato mentre lo digiti).
-3. Se usi un'app di autenticazione, inserisci il codice.
-4. Conferma l'accesso nell'app Trade Republic sul telefono.
-5. Compare `Accesso riuscito`.
+1. Enter your phone number with the international prefix (e.g. `+49151...`).
+2. Enter your Trade Republic PIN (it is not shown while typing).
+3. If you use an authenticator app, enter the code.
+4. Confirm the login in the Trade Republic app on your phone.
+5. You will see `Accesso riuscito` ("login successful").
 
-Quando la sessione scade, i comandi rispondono `Sessione scaduta`: ripeti il login.
-Per disconnetterti: `tr.py logout`.
+When the session expires, commands reply `Sessione scaduta` ("session expired"): log in again.
+To log out: `tr.py logout`.
 
-## Riferimento comandi
+> The CLI messages are in Italian; the JSON output is in the language set by `TR_LOCALE`.
+
+## Command reference
 
 ```bash
 python tr.py help
-python tr.py <comando> [argomenti]
+python tr.py <command> [arguments]
 ```
 
-Output in JSON su stdout. Gli errori iniziano con `Errore:` e restituiscono codice di uscita 1.
+Output is JSON on stdout. Errors start with `Errore:` and exit with code 1.
 
-### Conto (serve il login)
+### Account (login required)
 
-| Comando | Descrizione |
+| Command | Description |
 |---|---|
-| `summary` | Posizioni con nome, quantità, prezzo medio di carico, prezzo attuale, valore, P/L e totali, più liquidità |
-| `portfolio` | Posizioni grezze (`netSize`, `averageBuyIn`, categoria) |
-| `accounts` | Conti, con `securitiesAccountNumber` e `cashAccountNumber` |
-| `cash` | Liquidità |
-| `payout-cash` | Liquidità prelevabile |
-| `history <range>` | Valore storico del portafoglio — `1d`, `5d`, `1m`, `6m`, `ytd`, `1y`, `5y`, `max` |
-| `transactions [max=50]` | Movimenti: depositi, prelievi, acquisti/vendite, dividendi, interessi, carta |
-| `transaction <id>` | Dettaglio di un movimento (`id` preso da `transactions`) |
-| `activity [max=50]` | Log attività del conto |
-| `orders` | Ordini aperti |
-| `savings-plans` | Piani di accumulo |
-| `price-alarms` | Allarmi di prezzo |
+| `summary` | Positions with name, quantity, average buy-in, current price, value, P/L and totals, plus cash |
+| `portfolio` | Raw positions (`netSize`, `averageBuyIn`, category) |
+| `accounts` | Accounts, including `securitiesAccountNumber` and `cashAccountNumber` |
+| `cash` | Cash balance |
+| `payout-cash` | Cash available for withdrawal |
+| `history <range>` | Portfolio value over time: `1d`, `5d`, `1m`, `6m`, `ytd`, `1y`, `5y`, `max` |
+| `transactions [max=50]` | Transactions: deposits, withdrawals, buys/sells, dividends, interest, card |
+| `transaction <id>` | Details of a single transaction (`id` from `transactions`) |
+| `activity [max=50]` | Account activity log |
+| `orders` | Open orders |
+| `savings-plans` | Savings plans |
+| `price-alarms` | Price alarms |
 | `watchlist` | Watchlist |
 
-### Mercato (pubblico, anche senza login)
+### Market (public, no login needed)
 
-| Comando | Descrizione |
+| Command | Description |
 |---|---|
-| `search <testo> [tipo]` | Ricerca. `tipo`: `stock` (default), `fund`, `derivative`, `bond`, `crypto`, `privateFund`, `mutualFund` |
-| `instrument <ISIN>` | Dettagli e borse disponibili (`exchangeIds`) |
-| `stock-details <ISIN>` | Descrizione della società e fondamentali |
-| `price <ISIN> [borsa=LSX]` | Quotazione live: bid, ask, last |
-| `price-history <ISIN> <range> [borsa=LSX]` | Candele storiche — `1d`, `5d`, `1m`, `3m`, `6m`, `1y`, `5y`, `max` |
-| `news <ISIN>` | Notizie |
+| `search <text> [type]` | Search. `type`: `stock` (default), `fund`, `derivative`, `bond`, `crypto`, `privateFund`, `mutualFund` |
+| `instrument <ISIN>` | Details and available exchanges (`exchangeIds`) |
+| `stock-details <ISIN>` | Company description and fundamentals |
+| `price <ISIN> [exchange=LSX]` | Live quote: bid, ask, last |
+| `price-history <ISIN> <range> [exchange=LSX]` | Historical candles: `1d`, `5d`, `1m`, `3m`, `6m`, `1y`, `5y`, `max` |
+| `news <ISIN>` | News |
 
-Esempi:
+Examples:
 
 ```bash
 python tr.py summary
@@ -184,62 +185,61 @@ python tr.py price IE00BK5BQT80
 python tr.py price-history US0378331005 6m XETR
 ```
 
-Tutti gli orari sono timestamp Unix in millisecondi; gli importi sono stringhe decimali.
+All times are Unix timestamps in milliseconds; amounts are decimal strings.
 
-## Configurazione
+## Configuration
 
-Variabili d'ambiente opzionali:
+Optional environment variables:
 
-| Variabile | Default | A cosa serve |
+| Variable | Default | Purpose |
 |---|---|---|
-| `TR_STATE_DIR` | `~/.trade-republic` | Dove salvare la sessione |
-| `TR_LOCALE` | `it` | Lingua delle risposte (nomi, descrizioni, notizie) |
-| `TR_TIMEZONE` | `Europe/Rome` | Fuso orario dichiarato al login |
-| `TR_APP_VERSION` | versione del frontend web | Da aggiornare se Trade Republic rifiuta versioni vecchie |
-| `TR_PLATFORM` | `web-pro` | Piattaforma dichiarata al login |
-| `TR_USER_AGENT` | Chrome recente | User agent HTTP |
+| `TR_STATE_DIR` | `~/.trade-republic` | Where the session is stored |
+| `TR_LOCALE` | `it` | Language of responses (names, descriptions, news) |
+| `TR_TIMEZONE` | `Europe/Rome` | Time zone declared at login |
+| `TR_APP_VERSION` | current web frontend version | Bump if Trade Republic starts rejecting old versions |
+| `TR_PLATFORM` | `web-pro` | Platform declared at login |
+| `TR_USER_AGENT` | recent Chrome | HTTP user agent |
 
-Le ultime tre esistono perché Trade Republic cambia periodicamente il frontend: se il login
-smette di funzionare, spesso basta aggiornare un valore senza toccare il codice.
+The last three exist because Trade Republic regularly updates its frontend: if login stops
+working, updating one value often fixes it without touching the code.
 
-## Risoluzione problemi
+## Troubleshooting
 
-| Messaggio | Causa e rimedio |
+| Message | Cause and fix |
 |---|---|
-| `Nessuna sessione` | Non hai ancora fatto `tr.py login`. |
-| `Sessione scaduta o non valida` | Trade Republic ha chiuso la sessione (tempo, altro login web): rifai il login. |
-| `Login rifiutato: ...` | Numero o PIN errati, troppi tentativi o versione rifiutata (vedi `TR_APP_VERSION`). |
-| `Richiesta bloccata dal firewall AWS` | Trade Republic ha esteso il controllo anti-bot al login v2: serve un aggiornamento del client. |
-| `BAD_SUBSCRIPTION_TYPE` | Trade Republic ha rinominato una sottoscrizione: serve un aggiornamento del client. |
-| `Nessuna risposta per ticker` | La borsa scelta non quota lo strumento: usa una borsa da `instrument`. |
-| `Intervallo non valido` | L'intervallo non è supportato da quel comando (vedi tabelle sopra). |
+| `Nessuna sessione` (no session) | You haven't run `tr.py login` yet. |
+| `Sessione scaduta o non valida` (session expired) | Trade Republic closed the session (timeout, another web login): log in again. |
+| `Login rifiutato: ...` (login rejected) | Wrong number or PIN, too many attempts, or rejected version (see `TR_APP_VERSION`). |
+| `Richiesta bloccata dal firewall AWS` (blocked by AWS WAF) | Trade Republic extended its anti-bot check to the v2 login: the client needs an update. |
+| `BAD_SUBSCRIPTION_TYPE` | Trade Republic renamed a subscription: the client needs an update. |
+| `Nessuna risposta per ticker` (no ticker reply) | The chosen exchange doesn't list the instrument: pick one from `instrument`. |
+| `Intervallo non valido` (invalid range) | That range isn't supported by that command (see tables above). |
 
-## Limiti noti
+## Known limitations
 
-- `summary` usa l'ultimo prezzo su LSX (o sulla prima borsa disponibile); può differire
-  leggermente dal valore mostrato dall'app.
-- Le obbligazioni vengono riportate in percentuale del nominale e divise per 100: verifica i
-  valori se ne possiedi.
-- È gestito il conto titoli principale; conti aziendali o multipli non sono selezionabili.
-- L'API non è documentata: un cambio lato Trade Republic può rompere singoli comandi.
+- `summary` uses the latest price on LSX (or the first available exchange), which may differ
+  slightly from the value shown in the app.
+- Bonds are quoted as a percentage of par and divided by 100: double-check values if you hold any.
+- Only the main securities account is handled; business or multiple accounts can't be selected.
+- The API is undocumented: a change on Trade Republic's side can break individual commands.
 
-## Struttura della repo
+## Repository layout
 
 ```
 skill/trade-republic/
-├── SKILL.md          istruzioni e regole per Claude Code
-└── scripts/tr.py     client in sola lettura (solo libreria standard)
+├── SKILL.md          instructions and rules for Claude Code
+└── scripts/tr.py     read-only client (standard library only)
 README.md
 LICENSE               MIT
 ```
 
-## Ringraziamenti
+## Acknowledgements
 
-La conoscenza del protocollo deriva dal lavoro della community open source, in particolare
-[pytr](https://github.com/pytr-org/pytr) e
-[trade-republic-uapi](https://github.com/4strium/trade-republic-uapi) (entrambi MIT). Il codice
-di questa repo è scritto da zero.
+Knowledge of the protocol comes from the open-source community, in particular
+[pytr](https://github.com/pytr-org/pytr) and
+[trade-republic-uapi](https://github.com/4strium/trade-republic-uapi) (both MIT). The code in
+this repository is written from scratch.
 
-## Licenza
+## License
 
 MIT
